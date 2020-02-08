@@ -7,12 +7,22 @@ import (
 	"github.com/cayleygraph/cayley/graph/memstore"
 	"github.com/cayleygraph/cayley/query/linkedql"
 	"github.com/cayleygraph/quad"
+	"github.com/cayleygraph/quad/jsonld"
 	"github.com/cayleygraph/quad/voc"
 	"github.com/stretchr/testify/require"
 )
 
 var singleQuadData = []quad.Quad{
 	quad.MakeIRI("alice", "likes", "bob", ""),
+}
+
+func parseJSONLD(data interface{}) []quad.Quad {
+	reader := jsonld.NewReaderFromMap(data)
+	quads, err := quad.ReadAll(reader)
+	if err != nil {
+		panic(err)
+	}
+	return quads
 }
 
 var testCases = []struct {
@@ -625,6 +635,36 @@ var testCases = []struct {
 		},
 	},
 	// FIXME(iddan): add test for match nested objects.
+	{
+		name: "Collect",
+		data: parseJSONLD(map[string]interface{}{
+			"@context": map[string]interface{}{
+				"ex": "http://example.org/",
+			},
+			"@id": "ex:alice",
+			"ex:bestFriends": map[string]interface{}{
+				"@list": []interface{}{
+					map[string]interface{}{"@id": "ex:bob"},
+					map[string]interface{}{"@id": "ex:dan"},
+				},
+			},
+		}),
+		query: &Select{
+			From: &Collect{
+				From: &Vertex{},
+			},
+		},
+		results: []interface{}{
+			map[string]interface{}{
+				"http://www.w3.org/1999/02/22-rdf-syntax-ns#first": map[string]string{"@id": "http://example.org/bob"},
+				"http://www.w3.org/1999/02/22-rdf-syntax-ns#rest":  map[string]string{"@id": "_:b1"},
+			},
+			map[string]interface{}{
+				"http://www.w3.org/1999/02/22-rdf-syntax-ns#first": map[string]string{"@id": "http://example.org/dan"},
+				"http://www.w3.org/1999/02/22-rdf-syntax-ns#rest":  map[string]string{"@id": "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"},
+			},
+		},
+	},
 }
 
 func TestLinkedQL(t *testing.T) {
